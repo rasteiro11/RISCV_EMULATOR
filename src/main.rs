@@ -3,7 +3,6 @@ use std::fs::File;
 use std::io;
 use std::io::prelude::*;
 
-// Default DRAM size (128MiB).
 pub const DRAM_SIZE: u64 = 1024 * 1024 * 128;
 
 // A REPRESENTATION OF CPU
