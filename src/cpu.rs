@@ -60,28 +60,114 @@ impl Cpu {
     // }
 
     /// Execute an instruction after decoding.
-    fn execute(&mut self, inst: u32) {
+    fn execute(&mut self, inst: u32) -> Result<(), ()> {
         let opcode = inst & 0x7f;
         let rd = ((inst >> 7) & 0x1f) as usize;
         let rs1 = ((inst >> 15) & 0x1f) as usize;
         let rs2 = ((inst >> 20) & 0x1f) as usize;
+        let func3 = (inst >> 12) & 0x7;
+        let func7 = (inst >> 25) & 0x7f;
 
         // ZERO REGISTER NEEDS TO BE ALWAYS 0
         self.regs[0] = 0;
 
         match opcode {
+            0x03 => {
+                let imm = ((inst as i32 as i64) >> 20) as u64;
+                let addr = self.regs[rs1].wrapping_add(imm);
+                match func3 {
+                    0x0 => {
+                        // LB
+                        let val = self.load(addr, 8)?;
+                        self.regs[rd] = val as i8 as i64 as u64;
+                    }
+                    0x1 => {
+                        // LH
+                        let val = self.load(addr, 16)?;
+                        self.regs[rd] = val as i16 as i64 as u64;
+                    }
+                    0x2 => {
+                        // LW
+                        let val = self.load(addr, 32)?;
+                        self.regs[rd] = val as i32 as i64 as u64;
+                    }
+                    0x3 => {
+                        // LD
+                        let val = self.load(addr, 64)?;
+                        self.regs[rd] = val;
+                    }
+                    0x4 => {
+                        // LBU
+                        let val = self.load(addr, 8)?;
+                        self.regs[rd] = val;
+                    }
+                    0x5 => {
+                        // LHU
+                        let val = self.load(addr, 16)?;
+                        self.regs[rd] = val;
+                    }
+                    0x6 => {
+                        // LWU
+                        let val = self.load(addr, 32)?;
+                        self.regs[rd] = val;
+                    }
+
+                    _ => {
+                        return Err(());
+                    }
+                }
+            }
             0x13 => {
-                // addi
                 let imm = ((inst & 0xfff00000) as i32 as i64 >> 20) as u64;
-                self.regs[rd] = self.regs[rs1].wrapping_add(imm);
+                // THE SHAMT IS ENCODED IN THE LOWER 6 BITS"
+                let shamt = (imm & 0x3f) as u32;
+                match func3 {
+                    0x0 => {
+                        // ADDI
+                        self.regs[rd] = self.regs[rs1].wrapping_add(imm);
+                    }
+                    0x1 => {
+                        // SLLI
+                        self.regs[rd] = self.regs[rs1] << shamt;
+                    }
+                    0x2 => {
+                        self.regs[rd] = if (self.regs[rs1] as i64) < (imm as i64) {
+                            1
+                        } else {
+                            0
+                        };
+                    }
+                    0x3 => {
+                        // SLTIU
+                        self.regs[rd] = if self.regs[rs1] < imm { 1 } else { 0 };
+                    }
+                    0x4 => {
+                        // XORI
+                        self.regs[rd] = self.regs[rs1] ^ imm;
+                    }
+                    0x5 => {
+                        match func7 >> 1 {
+                            // SRLI
+                            0x00 => self.regs[rd] = self.regs[rs1].wrapping_shr(shamt),
+                            // SRAI
+                            0x10 => {
+                                self.regs[rd] = (self.regs[rs1] as i64).wrapping_shr(shamt) as u64
+                            }
+                            _ => {}
+                        }
+                    }
+                    // ORI
+                    0x6 => self.regs[rd] = self.regs[rs1] | imm,
+                    // ANDI
+                    0x7 => self.regs[rd] = self.regs[rs1] & imm,
+                    _ => {}
+                }
             }
-            0x33 => {
-                // add
-                self.regs[rd] = self.regs[rs1].wrapping_add(self.regs[rs2]);
-            }
-            _ => {
-                // dbg!(format!("not implemented yet: opcode {:#x}", opcode));
+            0x17 => {
+                // AUI PC
+                let imm = (inst & 0xfffff000) as i32 as i64 as u64;
             }
         }
+        return Err(());
     }
 }
