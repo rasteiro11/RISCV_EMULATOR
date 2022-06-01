@@ -166,6 +166,7 @@ impl Cpu {
             0x17 => {
                 // AUI PC
                 let imm = (inst & 0xfffff000) as i32 as i64 as u64;
+                self.regs[rd] = self.pc.wrapping_add(imm).wrapping_sub(4);
             }
         }
         return Err(());
