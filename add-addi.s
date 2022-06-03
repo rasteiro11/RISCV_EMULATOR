@@ -1,4 +1,6 @@
-main:
-  addi x29, x0, 5
-  addi x30, x0, 37
-  add x31, x30, x29
+.global _start
+
+_start:
+  addi a0, zerao, 35
+  addi a1, zero, 35
+  add a3, a0, a1

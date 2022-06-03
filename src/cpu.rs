@@ -60,77 +60,84 @@ impl Cpu {
     // }
 
     /// Execute an instruction after decoding.
-    fn execute(&mut self, inst: u32) -> Result<(), ()> {
+    /// /// Execute an instruction after decoding. Return true if an error happens, otherwise false.
+    pub fn execute(&mut self, inst: u64) -> Result<(), ()> {
         let opcode = inst & 0x7f;
         let rd = ((inst >> 7) & 0x1f) as usize;
         let rs1 = ((inst >> 15) & 0x1f) as usize;
         let rs2 = ((inst >> 20) & 0x1f) as usize;
-        let func3 = (inst >> 12) & 0x7;
-        let func7 = (inst >> 25) & 0x7f;
+        let funct3 = (inst >> 12) & 0x7;
+        let funct7 = (inst >> 25) & 0x7f;
 
-        // ZERO REGISTER NEEDS TO BE ALWAYS 0
+        // Emulate that register x0 is hardwired with all bits equal to 0.
         self.regs[0] = 0;
 
         match opcode {
             0x03 => {
+                // imm[11:0] = inst[31:20]
                 let imm = ((inst as i32 as i64) >> 20) as u64;
                 let addr = self.regs[rs1].wrapping_add(imm);
-                match func3 {
+                match funct3 {
                     0x0 => {
-                        // LB
+                        // lb
                         let val = self.load(addr, 8)?;
                         self.regs[rd] = val as i8 as i64 as u64;
                     }
                     0x1 => {
-                        // LH
+                        // lh
                         let val = self.load(addr, 16)?;
                         self.regs[rd] = val as i16 as i64 as u64;
                     }
                     0x2 => {
-                        // LW
+                        // lw
                         let val = self.load(addr, 32)?;
                         self.regs[rd] = val as i32 as i64 as u64;
                     }
                     0x3 => {
-                        // LD
+                        // ld
                         let val = self.load(addr, 64)?;
                         self.regs[rd] = val;
                     }
                     0x4 => {
-                        // LBU
+                        // lbu
                         let val = self.load(addr, 8)?;
                         self.regs[rd] = val;
                     }
                     0x5 => {
-                        // LHU
+                        // lhu
                         let val = self.load(addr, 16)?;
                         self.regs[rd] = val;
                     }
                     0x6 => {
-                        // LWU
+                        // lwu
                         let val = self.load(addr, 32)?;
                         self.regs[rd] = val;
                     }
-
                     _ => {
+                        println!(
+                            "not implemented yet: opcode {:#x} funct3 {:#x}",
+                            opcode, funct3
+                        );
                         return Err(());
                     }
                 }
             }
             0x13 => {
+                // imm[11:0] = inst[31:20]
                 let imm = ((inst & 0xfff00000) as i32 as i64 >> 20) as u64;
-                // THE SHAMT IS ENCODED IN THE LOWER 6 BITS"
+                // "The shift amount is encoded in the lower 6 bits of the I-immediate field for RV64I."
                 let shamt = (imm & 0x3f) as u32;
-                match func3 {
+                match funct3 {
                     0x0 => {
-                        // ADDI
+                        // addi
                         self.regs[rd] = self.regs[rs1].wrapping_add(imm);
                     }
                     0x1 => {
-                        // SLLI
+                        // slli
                         self.regs[rd] = self.regs[rs1] << shamt;
                     }
                     0x2 => {
+                        // slti
                         self.regs[rd] = if (self.regs[rs1] as i64) < (imm as i64) {
                             1
                         } else {
@@ -138,37 +145,246 @@ impl Cpu {
                         };
                     }
                     0x3 => {
-                        // SLTIU
+                        // sltiu
                         self.regs[rd] = if self.regs[rs1] < imm { 1 } else { 0 };
                     }
                     0x4 => {
-                        // XORI
+                        // xori
                         self.regs[rd] = self.regs[rs1] ^ imm;
                     }
                     0x5 => {
-                        match func7 >> 1 {
-                            // SRLI
+                        match funct7 >> 1 {
+                            // srli
                             0x00 => self.regs[rd] = self.regs[rs1].wrapping_shr(shamt),
-                            // SRAI
+                            // srai
                             0x10 => {
                                 self.regs[rd] = (self.regs[rs1] as i64).wrapping_shr(shamt) as u64
                             }
                             _ => {}
                         }
                     }
-                    // ORI
-                    0x6 => self.regs[rd] = self.regs[rs1] | imm,
-                    // ANDI
-                    0x7 => self.regs[rd] = self.regs[rs1] & imm,
+                    0x6 => self.regs[rd] = self.regs[rs1] | imm, // ori
+                    0x7 => self.regs[rd] = self.regs[rs1] & imm, // andi
                     _ => {}
                 }
             }
             0x17 => {
-                // AUI PC
+                // auipc
                 let imm = (inst & 0xfffff000) as i32 as i64 as u64;
                 self.regs[rd] = self.pc.wrapping_add(imm).wrapping_sub(4);
             }
+            0x1b => {
+                let imm = ((inst as i32 as i64) >> 20) as u64;
+                // "SLLIW, SRLIW, and SRAIW encodings with imm[5] ̸= 0 are reserved."
+                let shamt = (imm & 0x1f) as u32;
+                match funct3 {
+                    0x0 => {
+                        // ADDIW
+                        self.regs[rd] = self.regs[rs1].wrapping_add(imm) as i32 as i64 as u64;
+                    }
+                    0x1 => {
+                        // SLLIW
+                        self.regs[rd] = self.regs[rs1].wrapping_shl(shamt) as i32 as i64 as u64;
+                    }
+                    0x5 => {
+                        match funct7 {
+                            0x00 => {
+                                // SRLIW
+                                self.regs[rd] = (self.regs[rs1] as u32).wrapping_shr(shamt) as i32
+                                    as i64 as u64;
+                            }
+                            0x20 => {
+                                // SRAIW
+                                self.regs[rd] =
+                                    (self.regs[rs1] as i32).wrapping_shr(shamt) as i64 as u64;
+                            }
+                            _ => {
+                                return Err(());
+                            }
+                        }
+                    }
+                    _ => {
+                        return Err(());
+                    }
+                }
+            }
+            0x23 => {
+                let imm = (((inst & 0xfe000000) as i32 as i64 >> 20) as u64) | ((inst >> 7) & 0x1f);
+                let addr = self.regs[rs1].wrapping_add(imm);
+                match funct3 {
+                    0x0 => self.store(addr, 8, self.regs[rs2])?,  // sb
+                    0x1 => self.store(addr, 16, self.regs[rs2])?, // sh
+                    0x2 => self.store(addr, 32, self.regs[rs2])?, // sw
+                    0x3 => self.store(addr, 64, self.regs[rs2])?, // sd
+                    _ => {}
+                }
+            }
+            0x33 => {
+                let shamt = ((self.regs[rs2] & 0x3f) as u64) as u32;
+                match (funct3, funct7) {
+                    (0x0, 0x00) => {
+                        // ADD
+                        self.regs[rd] = self.regs[rs1].wrapping_add(self.regs[rs2]);
+                    }
+                    (0x0, 0x01) => {
+                        // MUL
+                        self.regs[rd] = self.regs[rs1].wrapping_mul(self.regs[rs2]);
+                    }
+                    (0x0, 0x20) => {
+                        // SUB
+                        self.regs[rd] = self.regs[rs1].wrapping_sub(self.regs[rs2]);
+                    }
+                    (0x1, 0x00) => {
+                        // SLL
+                        self.regs[rd] = self.regs[rs1].wrapping_shl(shamt);
+                    }
+                    (0x2, 0x00) => {
+                        // SLT
+                        self.regs[rd] = if (self.regs[rs1] as i64) < (self.regs[rs2] as i64) {
+                            1
+                        } else {
+                            0
+                        };
+                    }
+                    (0x3, 0x00) => {
+                        // SLTU
+                        self.regs[rd] = if self.regs[rs1] < self.regs[rs2] {
+                            1
+                        } else {
+                            0
+                        };
+                    }
+                    (0x4, 0x00) => {
+                        // XOR
+                        self.regs[rd] = self.regs[rs1] ^ self.regs[rs2];
+                    }
+                    (0x5, 0x00) => {
+                        // SRL
+                        self.regs[rd] = self.regs[rs1].wrapping_shr(shamt);
+                    }
+                    (0x5, 0x20) => {
+                        // SRA
+                        self.regs[rd] = (self.regs[rs1] as i64).wrapping_shr(shamt) as u64;
+                    }
+                    (0x6, 0x00) => {
+                        // OR
+                        self.regs[rd] = self.regs[rs1] | self.regs[rs2];
+                    }
+                    (0x7, 0x00) => {
+                        // AND
+                        self.regs[rd] = self.regs[rs1] & self.regs[rs2];
+                    }
+                    _ => {
+                        return Err(());
+                    }
+                }
+            }
+            0x37 => {
+                // LUI
+                self.regs[rd] = (inst & 0xfffff000) as i32 as i64 as u64;
+            }
+            0x3b => {
+                let shamt = (self.regs[rs2] & 0x1f) as u32;
+                match (funct3, funct7) {
+                    (0x0, 0x00) => {
+                        // ADDW
+                        self.regs[rd] =
+                            self.regs[rs1].wrapping_add(self.regs[rs2]) as i32 as i64 as u64;
+                    }
+                    (0x0, 0x20) => {
+                        // SUBW
+                        self.regs[rd] =
+                            ((self.regs[rs1].wrapping_sub(self.regs[rs2])) as i32) as u64;
+                    }
+                    (0x1, 0x00) => {
+                        // SLLW
+                        self.regs[rd] = (self.regs[rs1] as u32).wrapping_shl(shamt) as i32 as u64;
+                    }
+                    (0x5, 0x00) => {
+                        // SRLW
+                        self.regs[rd] = (self.regs[rs1] as u32).wrapping_shr(shamt) as i32 as u64;
+                    }
+                    (0x5, 0x20) => {
+                        // SRAW
+                        self.regs[rd] = ((self.regs[rs1] as i32) >> (shamt as i32)) as u64;
+                    }
+                    _ => {
+                        return Err(());
+                    }
+                }
+            }
+            0x63 => {
+                let imm = (((inst & 0x80000000) as i32 as i64 >> 19) as u64)
+                    | ((inst & 0x80) << 4) // imm[11]
+                    | ((inst >> 20) & 0x7e0) // imm[10:5]
+                    | ((inst >> 7) & 0x1e); // imm[4:1]
+
+                match funct3 {
+                    0x0 => {
+                        // BEQ
+                        if self.regs[rs1] == self.regs[rs2] {
+                            self.pc = self.pc.wrapping_add(imm).wrapping_sub(4);
+                        }
+                    }
+                    0x1 => {
+                        // BNE
+                        if self.regs[rs1] != self.regs[rs2] {
+                            self.pc = self.pc.wrapping_add(imm).wrapping_sub(4);
+                        }
+                    }
+                    0x4 => {
+                        // BLT
+                        if (self.regs[rs1] as i64) < (self.regs[rs2] as i64) {
+                            self.pc = self.pc.wrapping_add(imm).wrapping_sub(4);
+                        }
+                    }
+                    0x5 => {
+                        // BGE
+                        if (self.regs[rs1] as i64) >= (self.regs[rs2] as i64) {
+                            self.pc = self.pc.wrapping_add(imm).wrapping_sub(4);
+                        }
+                    }
+                    0x6 => {
+                        // BLTU
+                        if self.regs[rs1] < self.regs[rs2] {
+                            self.pc = self.pc.wrapping_add(imm).wrapping_sub(4);
+                        }
+                    }
+                    0x7 => {
+                        // BGEU
+                        if self.regs[rs1] >= self.regs[rs2] {
+                            self.pc = self.pc.wrapping_add(imm).wrapping_sub(4);
+                        }
+                    }
+                    _ => {
+                        return Err(());
+                    }
+                }
+            }
+            0x67 => {
+                // JALR
+                let t = self.pc;
+
+                let imm = ((((inst & 0xfff00000) as i32) as i64) >> 20) as u64;
+                self.pc = (self.regs[rs1].wrapping_add(imm)) & !1;
+
+                self.regs[rd] = t;
+            }
+            0x6f => {
+                // JAL
+                self.regs[rd] = self.pc;
+
+                let imm = (((inst & 0x80000000) as i32 as i64 >> 11) as u64) // imm[20]
+                    | (inst & 0xff000) // imm[19:12]
+                    | ((inst >> 9) & 0x800) // imm[11]
+                    | ((inst >> 20) & 0x7fe); // imm[10:1]
+
+                self.pc = self.pc.wrapping_add(imm).wrapping_sub(4);
+            }
+            _ => {
+                return Err(());
+            }
         }
-        return Err(());
+        return Ok(());
     }
 }
