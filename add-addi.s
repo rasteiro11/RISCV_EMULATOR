@@ -1,6 +1,6 @@
 .global _start
 
 _start:
-  addi a0, zerao, 35
-  addi a1, zero, 35
-  add a3, a0, a1
+  addi t0, zero, 210
+  addi t1, zero, 210
+  add t3, t0, t1
