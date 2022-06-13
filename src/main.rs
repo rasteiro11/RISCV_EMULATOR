@@ -20,6 +20,8 @@ fn main() -> io::Result<()> {
 
     let mut cpu = Cpu::new(code);
 
+    println!("-------------------------------------------");
+
     loop {
         // FETCH
         let inst = match cpu.fetch() {
@@ -37,12 +39,13 @@ fn main() -> io::Result<()> {
             Err(_) => break,
         }
 
+        cpu.show_registers();
+        println!("-------------------------------------------");
+
         if cpu.pc == 0 {
             break;
         }
     }
-
-    cpu.show_registers();
 
     Ok(())
 }
