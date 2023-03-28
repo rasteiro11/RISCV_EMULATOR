@@ -6,7 +6,7 @@ A risc-v emulator made using rust for a computer architecture class
   - run code in emulator
 
 - How to run
-  - Compile to assembly to binary
+  - Compile from assembly to binary
   ```
    make compile
   ```
